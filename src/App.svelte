@@ -86,11 +86,12 @@
 	}
 
 	async function verify(tokenContent) {
-		const PGP_MESSAGE_END = "-----END PGP SIGNATURE-----";
 		while (true) {
-			let ownerPublicKeyArmored = getOwnerPublicKey(
-				(await openpgp.unarmor(tokenContent)).text
-			);
+			const tokenBeforeTransfer = await unnest(tokenContent);
+			if (!tokenBeforeTransfer) {
+				break;
+			}
+			let ownerPublicKeyArmored = await getOwnerPublicKey((await openpgp.unarmor(tokenBeforeTransfer)).text);
 			const publicKey = await openpgp.readKey({
 				armoredKey: ownerPublicKeyArmored,
 			});
@@ -101,18 +102,25 @@
 				verificationKeys: publicKey,
 			});
 			await verifyResult.signatures[0].verified;
-			tokenContent = verifyResult.data;
-			const nestedMessageIndex =
-				tokenContent.lastIndexOf(PGP_MESSAGE_END);
-			if (nestedMessageIndex == -1) {
-				break;
-			}
-			tokenContent = tokenContent.substring(
-				0,
-				nestedMessageIndex + PGP_MESSAGE_END.length
-			);
+			tokenContent = tokenBeforeTransfer
 		}
 		return true;
+	}
+	async function unnest(tokenContent) {
+		const PGP_MESSAGE_END = "-----END PGP SIGNATURE-----";
+		if (!tokenContent) {
+			return null;
+		}
+		tokenContent = (await openpgp.unarmor(tokenContent)).text
+		const nestedMessageIndex = tokenContent.lastIndexOf(PGP_MESSAGE_END);
+		if (nestedMessageIndex == -1) {
+			return null;
+		}
+		return tokenContent.substring(
+			0,
+			nestedMessageIndex + PGP_MESSAGE_END.length
+		);
+	
 	}
 	async function verifyToken() {
 		let tokenContent = await readFileContent(token);
